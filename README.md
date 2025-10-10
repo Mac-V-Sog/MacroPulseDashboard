@@ -50,7 +50,7 @@ MacroPulseDashboard aims to:
 - **Educate** traders on macro relationships, with built-in tooltips explaining each metric.
 
 It’s not a trading signal generator; it’s a **situational awareness tool**.  
-Think of it as your *market seismograph*, tracking tremors before the quake.
+Think of it as a *market seismograph*, tracking tremors before the quake... (weird analogy, I know!)
 
 ---
 
