@@ -1,0 +1,428 @@
+//@version=6
+indicator("Macro Risk Dashboard — v7.2", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ===== Helpers =====
+f_z(src, len) =>
+    m = ta.sma(src, len)
+    s = ta.stdev(src, len)
+    (src - m) / s
+
+f_fmt(x) => na(x) ? "na" : str.tostring(x, format.mintick)
+f_arrow(d) => na(d) ? "→" : d > 0.15 ? "▲" : d < -0.15 ? "▼" : "→"
+
+f_sec(sym, tf, src) =>
+    request.security(sym, tf, src=="close"?close:src=="open"?open:src=="high"?high:low, barmerge.gaps_off, barmerge.lookahead_off)
+
+// risk helpers
+f_status(val, amb, red, dirUp=true) =>
+    isRed   = dirUp ? (val >= red) : (val <= red)
+    isAmber = dirUp ? (val >= amb and val < red) : (val <= amb and val > red)
+    isRed ? 2 : isAmber ? 1 : 0
+
+f_word_from_status(code) => code == 3 ? "High risk" : code == 2 ? "Caution" : code == 1 ? "Monitor" : "No immediate concern"
+f_color_from_status(code) => code == 3 ? color.new(color.rgb(255, 56, 56), 0) : // red
+     code == 2 ? color.new(color.rgb(255, 170, 0), 0) :                         // amber
+     code == 1 ? color.new(color.rgb(255, 255, 0), 0) :                         // yellow
+                 color.new(color.rgb(0, 255, 0), 0)                             // green
+
+// one-row writer with tooltip + optional Note column
+f_row(tbl, r, title, note, val, z, zchg, riskWord, riskColor, sym, txtSize, noteSize, showNoteCol) =>
+    paneBg = color.new(color.rgb(10,10,10), 0)
+    labCol = color.new(color.rgb(0,255,255), 0)  // cyan labels (Bloomberg-y)
+    // Metric (with tooltip)
+    table.cell(tbl, 0, r, title, tooltip=note, text_color=labCol,    bgcolor=paneBg, text_size=txtSize)
+    table.cell(tbl, 1, r, f_fmt(val),          text_color=color.white,bgcolor=paneBg, text_size=txtSize)
+    table.cell(tbl, 2, r, f_fmt(z),            text_color=color.white,bgcolor=paneBg, text_size=txtSize)
+    table.cell(tbl, 3, r, f_arrow(zchg),       text_color=color.white,bgcolor=paneBg, text_size=txtSize)
+    table.cell(tbl, 4, r, riskWord,            text_color=color.black,bgcolor=riskColor, text_size=txtSize)
+    table.cell(tbl, 5, r, sym,                 text_color=color.white,bgcolor=paneBg, text_size=txtSize)
+    noteBg = color.new(color.rgb(25,25,25), 0)
+    table.cell(tbl, 6, r, showNoteCol ? note : "", text_color=color.white, bgcolor=noteBg, text_size=noteSize)
+    r + 1
+
+// ===== Inputs =====
+// US block
+grp1 = "US — Symbols"
+symVIX   = input.symbol("CBOE:VIX",   "VIX (CBOE)",              group=grp1)
+symVXN   = input.symbol("CBOE:VXN",   "VXN (Nasdaq vol)",        group=grp1)
+symCPC   = input.symbol("INDEX:CPC",  "Put/Call (Total)",        group=grp1)
+symSKEW  = input.symbol("INDEX:SKEW", "SKEW (Tail risk)",        group=grp1)
+useMOVE  = input.bool(false,          "Include MOVE (Treasury vol)", group=grp1)
+symMOVE  = input.symbol("TVC:MOVE",   "MOVE symbol",             group=grp1)
+symT10Y3M= input.symbol("FRED:T10Y3M","Yield Curve (10y-3m) [bps src]", group=grp1)
+symHYOAS = input.symbol("FRED:BAMLH0A0HYM2", "High Yield OAS (bps)", group=grp1)
+symIGOAS = input.symbol("FRED:BAMLC0A0CM",   "IG OAS (bps)",          group=grp1)
+symNFCI  = input.symbol("FRED:NFCI",   "Chicago Fed NFCI",           group=grp1)
+symSLOOS = input.symbol("FRED:DRTSCILM","SLOOS Net Tightening C&I (pp)", group=grp1)
+symS5TH  = input.symbol("INDEX:S5TH", "% S&P above 200DMA", group=grp1)
+symSPY   = input.symbol("AMEX:SPY",   "SPY (cap-weighted)", group=grp1)
+symRSP   = input.symbol("AMEX:RSP",   "RSP (equal-weighted)", group=grp1)
+
+// EU block — OFF by default
+grpEU = "EU — Symbols & Toggles (all OFF by default; enable as needed)"
+showEU_Vol       = input.bool(false, "Show EU Volatility (VSTOXX future FVS1!)", group=grpEU)
+symEU_Vol        = input.symbol("EUREX:FVS1!", "EU Vol proxy (VSTOXX future)", group=grpEU)
+showEU_CreditETF = input.bool(false, "Show EU Credit Proxy (IHYG/IEAC ratio)", group=grpEU)
+symEU_IG_ETF     = input.symbol("LSE:IEAC", "EUR IG Bond ETF (proxy)", group=grpEU)
+symEU_HY_ETF     = input.symbol("LSE:IHYG", "EUR HY Bond ETF (proxy)", group=grpEU)
+showEU_Curve     = input.bool(false, "Show EU Yield Curve (DE10Y - DE02Y)", group=grpEU)
+symEU_10Y        = input.symbol("TVC:DE10Y", "German 10Y Yield [%]",   group=grpEU)
+symEU_SE         = input.symbol("TVC:DE02Y", "German 2Y Yield [%]",    group=grpEU)
+showEU_Conc      = input.bool(false, "Show EU Concentration (Cap/Broad ETFs)", group=grpEU)
+symEU_CapETF     = input.symbol("AMEX:VGK", "Europe Cap-weight ETF", group=grpEU)
+symEU_BroadETF   = input.symbol("AMEX:EZU", "Europe Broad ETF (proxy)", group=grpEU)
+includeEUinComposite = input.bool(false, "Include EU block in Composite RiskScore", group=grpEU)
+
+// Z lookbacks
+grp2 = "Z-Score Lookbacks"
+lenDaily   = input.int(260, "Z length (daily/high-freq)", minval=50, group=grp2)
+lenMonthly = input.int(52,  "Z length (monthly/slow)",    minval=12, group=grp2)
+trendLook  = input.int(10,  "Trend lookback (bars of Macro TF)",    minval=2,  group=grp2)
+
+// Thresholds
+grp3 = "US Thresholds"
+hyAmber = input.int(500, "US HY OAS amber (bps)", group=grp3)
+hyRed   = input.int(700, "US HY OAS red (bps)",   group=grp3)
+igAmber = input.int(140, "US IG OAS amber (bps)", group=grp3)
+igRed   = input.int(170, "US IG OAS red (bps)",   group=grp3)
+vixAmber  = input.float(25.0,  "US VIX amber", group=grp3)
+vixRed    = input.float(30.0,  "US VIX red",   group=grp3)
+moveAmber = input.float(110.0, "MOVE amber (if used)", group=grp3)
+moveRed   = input.float(130.0, "MOVE red (if used)",   group=grp3)
+breadthAmber = input.float(45.0, "%>200DMA amber", group=grp3)
+breadthRed   = input.float(30.0, "%>200DMA red",   group=grp3)
+curveAmber   = input.float(0.0,  "US 10y-3m (bps) amber line", group=grp3)
+curveRed     = input.float(-50.0,"US 10y-3m (bps) red line",   group=grp3)
+
+grp3b = "EU Thresholds"
+eu_volAmber = input.float(20.0, "EU vol amber (FVS1!)", group=grp3b)
+eu_volRed   = input.float(30.0, "EU vol red (FVS1!)",   group=grp3b)
+eu_curveAmber  = input.float(0.0,  "EU curve amber line (bps)", group=grp3b)
+eu_curveRed    = input.float(-30.0,"EU curve red line (bps)",   group=grp3b)
+
+// Display & layout
+grp4 = "Display & Layout"
+anchorStatus  = input.string("top_right",    "Status box anchor", options=["top_left","top_right","bottom_left","bottom_right"], group=grp4)
+anchorMain    = input.string("bottom_right", "Main dashboard anchor", options=["top_left","top_right","bottom_left","bottom_right"], group=grp4)
+macroTF       = input.string("D", "Macro data timeframe", options=["D","W","M"], group=grp4)
+txtMain       = input.string("small",  "Main text size", options=["tiny","small","normal","large"], group=grp4)
+txtStatus     = input.string("large",  "Status text size", options=["tiny","small","normal","large"], group=grp4)
+useCompact    = input.bool(true, "Compact rows (less vertical space)", group=grp4)
+
+// Notes / Tooltips
+grpNotes = "Notes & Tooltips"
+showTooltips   = input.bool(true,  "Show Tooltips (hover info)", group=grpNotes)
+showNoteColumn = input.bool(true,  "Show Note Column", group=grpNotes)
+noteTextSize   = input.string("tiny", "Note text size", options=["tiny","small","normal"], group=grpNotes)
+
+// map sizes
+toSize(s) => s=="tiny" ? size.tiny : s=="small" ? size.small : s=="large" ? size.large : size.normal
+txtSizeMain   = toSize(txtMain)
+txtSizeStatus = toSize(txtStatus)
+txtSizeNote   = toSize(noteTextSize)
+
+// ===== Data pulls (US) =====
+vix   = f_sec(symVIX,   macroTF, "close")
+vxn   = f_sec(symVXN,   macroTF, "close")
+moveI = useMOVE ? f_sec(symMOVE, macroTF, "close") : na
+cpc   = f_sec(symCPC,   macroTF, "close")
+skew  = f_sec(symSKEW,  macroTF, "close")
+
+yc_bps = f_sec(symT10Y3M, macroTF, "close") * 100.0
+hy_oas = f_sec(symHYOAS,  macroTF, "close") * 100.0
+ig_oas = f_sec(symIGOAS,  macroTF, "close") * 100.0
+
+nfci    = f_sec(symNFCI,  macroTF, "close")
+sloos   = f_sec(symSLOOS, macroTF, "close")
+breadth = f_sec(symS5TH,  macroTF, "close")
+
+// SPY/RSP daily
+spyCloseD = f_sec(symSPY, "D", "close")
+rspCloseD = f_sec(symRSP, "D", "close")
+concRatio = na(spyCloseD) or na(rspCloseD) ? na : spyCloseD / rspCloseD
+
+// ===== Data pulls (EU; toggled) =====
+eu_vol  = showEU_Vol        ? f_sec(symEU_Vol, macroTF, "close") : na
+eu_igE  = showEU_CreditETF  ? f_sec(symEU_IG_ETF, macroTF, "close") : na
+eu_hyE  = showEU_CreditETF  ? f_sec(symEU_HY_ETF, macroTF, "close") : na
+eu_credit_ratio = showEU_CreditETF and not na(eu_igE) and not na(eu_hyE) ? (eu_hyE / eu_igE) : na
+
+eu_y10  = showEU_Curve ? f_sec(symEU_10Y, macroTF, "close") : na
+eu_se   = showEU_Curve ? f_sec(symEU_SE,  macroTF, "close") : na
+eu_curve_bps = showEU_Curve and not na(eu_y10) and not na(eu_se) ? (eu_y10 - eu_se) * 100.0 : na
+
+eu_cap  = showEU_Conc ? f_sec(symEU_CapETF,  "D", "close") : na
+eu_brd  = showEU_Conc ? f_sec(symEU_BroadETF,"D", "close") : na
+eu_conc_ratio = showEU_Conc and not na(eu_cap) and not na(eu_brd) ? eu_cap / eu_brd : na
+
+// ===== Z-scores & Trends =====
+z_vix   = f_z(vix,   lenDaily),   dz_vix   = z_vix   - nz(z_vix[trendLook])
+z_vxn   = f_z(vxn,   lenDaily),   dz_vxn   = z_vxn   - nz(z_vxn[trendLook])
+z_move  = f_z(moveI, lenDaily),   dz_move  = z_move  - nz(z_move[trendLook])
+z_cpc   = f_z(cpc,   lenDaily),   dz_cpc   = z_cpc   - nz(z_cpc[trendLook])
+z_skew  = f_z(skew,  lenDaily),   dz_skew  = z_skew  - nz(z_skew[trendLook])
+
+z_yc    = f_z(yc_bps, lenMonthly), dz_yc   = z_yc    - nz(z_yc[trendLook])
+z_hy    = f_z(hy_oas, lenDaily),   dz_hy   = z_hy    - nz(z_hy[trendLook])
+z_ig    = f_z(ig_oas, lenDaily),   dz_ig   = z_ig    - nz(z_ig[trendLook])
+z_nfci  = f_z(nfci,   lenDaily),   dz_nfci = z_nfci  - nz(z_nfci[trendLook])
+z_sloos = f_z(sloos,  lenMonthly), dz_sloo = z_sloos - nz(z_sloos[trendLook])
+z_breadth = f_z(breadth, lenDaily), dz_brd = z_breadth - nz(z_breadth[trendLook])
+z_conc    = f_z(concRatio, lenDaily), dz_conc = z_conc - nz(z_conc[trendLook])
+
+z_eu_vol   = f_z(eu_vol, lenDaily),                 dz_eu_vol   = z_eu_vol   - nz(z_eu_vol[trendLook])
+z_eu_cr    = f_z(eu_credit_ratio, lenDaily),        dz_eu_cr    = z_eu_cr    - nz(z_eu_cr[trendLook])
+z_eu_curve = f_z(eu_curve_bps, lenMonthly),         dz_eu_curve = z_eu_curve - nz(z_eu_curve[trendLook])
+z_eu_conc  = f_z(eu_conc_ratio, lenDaily),          dz_eu_conc  = z_eu_conc  - nz(z_eu_conc[trendLook])
+
+// ===== Status (US) =====
+stHY   = f_status(hy_oas, hyAmber, hyRed, true)
+stIG   = f_status(ig_oas, igAmber, igRed, true)
+stVIX  = f_status(vix,    vixAmber, vixRed, true)
+stVXN  = f_status(vxn,    vixAmber+5.0, vixRed+5.0, true)
+stMOVE = useMOVE ? f_status(moveI,  moveAmber, moveRed, true) : 0
+ambConc = ta.sma(concRatio, 260)
+redConc = ambConc * 1.05
+stCONC = f_status(concRatio, ambConc, redConc, true)
+stYC   = f_status(yc_bps, curveAmber, curveRed, false)
+stBR   = f_status(breadth, breadthAmber, breadthRed, false)
+stCPC  = f_status(cpc, 0.90, 1.00, true)
+stSKEW = f_status(skew, 140, 150, true)
+stNFCI = f_status(nfci, 0.0, 0.5, true)
+stSLOOS= f_status(sloos, 20, 30, true)
+
+// colors
+colHY   = f_color_from_status(stHY)
+colIG   = f_color_from_status(stIG)
+colVIX  = f_color_from_status(stVIX)
+colVXN  = f_color_from_status(stVXN)
+colMOVE = f_color_from_status(stMOVE)
+colCONC = f_color_from_status(stCONC)
+colYC   = f_color_from_status(stYC)
+colBR   = f_color_from_status(stBR)
+colCPC  = f_color_from_status(stCPC)
+colSKEW = f_color_from_status(stSKEW)
+colNFCI = f_color_from_status(stNFCI)
+colSLOOS= f_color_from_status(stSLOOS)
+
+// ===== Status (EU toggled) =====
+stEU_VOL  = showEU_Vol and not na(eu_vol) ? f_status(eu_vol, eu_volAmber, eu_volRed, true) : 0
+colEU_VOL = f_color_from_status(stEU_VOL)
+
+eu_cr_base = showEU_CreditETF and not na(eu_credit_ratio) ? ta.sma(eu_credit_ratio, 260) : na
+eu_cr_amb  = na(eu_cr_base) ? na : eu_cr_base * 1.02
+eu_cr_red  = na(eu_cr_base) ? na : eu_cr_base * 1.05
+stEU_CR    = showEU_CreditETF and not na(eu_credit_ratio) and not na(eu_cr_amb) and not na(eu_cr_red) ? f_status(eu_credit_ratio, eu_cr_amb, eu_cr_red, true) : 0
+colEU_CR   = f_color_from_status(stEU_CR)
+
+stEU_CURV  = showEU_Curve and not na(eu_curve_bps) ? f_status(eu_curve_bps, eu_curveAmber, eu_curveRed, false) : 0
+colEU_CURV = f_color_from_status(stEU_CURV)
+
+eu_conc_base = showEU_Conc and not na(eu_conc_ratio) ? ta.sma(eu_conc_ratio, 260) : na
+eu_conc_amb  = na(eu_conc_base) ? na : eu_conc_base * 1.02
+eu_conc_red  = na(eu_conc_base) ? na : eu_conc_base * 1.05
+stEU_CONC    = showEU_Conc and not na(eu_conc_ratio) and not na(eu_conc_amb) and not na(eu_conc_red) ? f_status(eu_conc_ratio, eu_conc_amb, eu_conc_red, true) : 0
+colEU_CONC   = f_color_from_status(stEU_CONC)
+
+// ===== Composite (US baseline; EU optional) =====
+f_bucket1(code) => code == 2 ? 2 : code == 1 ? 1 : 0
+f_bucket2(c1, c2) => (c1 == 2 or c2 == 2) ? 2 : (c1 == 1 or c2 == 1) ? 1 : 0
+f_bucket3(c1, c2, c3) => (c1 == 2 or c2 == 2 or c3 == 2) ? 2 : (c1 == 1 or c2 == 1 or c3 == 1) ? 1 : 0
+
+scoreCredit_US     = f_bucket2(stHY, stIG)
+scoreVol_US        = useMOVE ? f_bucket3(stVIX, stVXN, stMOVE) : f_bucket2(stVIX, stVXN)
+scoreCurve_US      = f_bucket1(stYC)
+scoreBreadth_US    = f_bucket1(stBR)
+scoreSentiment_US  = f_bucket3(stCPC, 0, stSKEW) // CPCE removed
+scoreConditions_US = f_bucket2(stNFCI, stSLOOS)
+
+sc_US  = scoreCredit_US + scoreVol_US + scoreCurve_US + scoreBreadth_US + scoreSentiment_US + scoreConditions_US
+den_US = 12.0
+
+scoreEU = 0.0
+den_add = 0.0
+if includeEUinComposite
+    if showEU_CreditETF
+        scoreEU += f_bucket1(stEU_CR)
+        den_add += 2.0
+    if showEU_Vol
+        scoreEU += f_bucket1(stEU_VOL)
+        den_add += 2.0
+    if showEU_Curve
+        scoreEU += f_bucket1(stEU_CURV)
+        den_add += 2.0
+    if showEU_Conc
+        scoreEU += f_bucket1(stEU_CONC)
+        den_add += 2.0
+
+riskScore = math.round(100.0 * (sc_US + scoreEU) / (den_US + den_add))
+compColor = riskScore >= 67 ? color.new(color.rgb(255,56,56), 0) : riskScore >= 34 ? color.new(color.rgb(255,170,0), 0) : color.new(color.rgb(0,255,0), 0)
+
+// ===== Status headline =====
+reds   = (stHY==2?1:0) + (stIG==2?1:0) + (stVIX==2?1:0) + (stVXN==2?1:0) + (useMOVE and stMOVE==2?1:0) + (stYC==2?1:0) + (stBR==2?1:0) + (stCPC==2?1:0) + (stSKEW==2?1:0) + (stNFCI==2?1:0) + (stSLOOS==2?1:0)
+ambers = (stHY==1?1:0) + (stIG==1?1:0) + (stVIX==1?1:0) + (stVXN==1?1:0) + (useMOVE and stMOVE==1?1:0) + (stYC==1?1:0) + (stBR==1?1:0) + (stCPC==1?1:0) + (stSKEW==1?1:0) + (stNFCI==1?1:0) + (stSLOOS==1?1:0)
+if includeEUinComposite
+    reds   += (stEU_CR==2?1:0) + (stEU_VOL==2?1:0) + (stEU_CURV==2?1:0) + (stEU_CONC==2?1:0)
+    ambers += (stEU_CR==1?1:0) + (stEU_VOL==1?1:0) + (stEU_CURV==1?1:0) + (stEU_CONC==1?1:0)
+
+statusCode = (reds >= 4 or (scoreCredit_US==2 and (scoreVol_US>=1 or stNFCI==2 or stSLOOS==2)) or (stBR==2 and (stCONC>=1) and (stVIX>=1))) ? 3 : (reds >= 2 or riskScore >= 50) ? 2 : (ambers >= 3 or riskScore >= 34) ? 1 : 0
+statusWord  = f_word_from_status(statusCode)
+statusColor = f_color_from_status(statusCode)
+
+reason = ""
+reason := scoreCredit_US==2 ? reason + (str.length(reason)>0 ? ", " : "") + "US credit stress" : reason
+reason := scoreVol_US>=1    ? reason + (str.length(reason)>0 ? ", " : "") + "US vol rising"    : reason
+reason := stYC==2           ? reason + (str.length(reason)>0 ? ", " : "") + "US curve deeply inverted" : reason
+reason := stBR==2           ? reason + (str.length(reason)>0 ? ", " : "") + "US breadth weak"  : reason
+reason := stCONC>=1         ? reason + (str.length(reason)>0 ? ", " : "") + "US narrow leadership" : reason
+reason := (showEU_CreditETF and stEU_CR>=1) ? reason + (str.length(reason)>0 ? ", " : "") + "EU credit proxy stressed" : reason
+reason := (showEU_Vol and stEU_VOL>=1)      ? reason + (str.length(reason)>0 ? ", " : "") + "EU vol elevated" : reason
+reason := (showEU_Curve and stEU_CURV>=1)   ? reason + (str.length(reason)>0 ? ", " : "") + "EU curve strained" : reason
+reason := (showEU_Conc and stEU_CONC>=1)    ? reason + (str.length(reason)>0 ? ", " : "") + "EU narrow leadership" : reason
+reason := str.length(reason)==0 ? "No major cross-signal stress" : reason
+
+statusSentence = statusCode==3 ? "High risk: consider hedging or reducing exposure." : statusCode==2 ? "Caution: conditions can deteriorate; watch risk assets." : statusCode==1 ? "Monitor: mixed signals; keep an eye on drivers." : "No immediate concern: broad conditions benign."
+
+// ===== Notes (full interpretation text for tooltips & optional column) =====
+detailedNotes = true  // always use full interpretation for tooltips
+noteHY   = "Tracks yield premium on high-yield (junk) bonds. Rising spreads = growing credit risk; often leads equity downturns. Watch for >500 bps (amber), >700 bps (red)."
+noteIG   = "Investment-grade credit stress gauge. Widening indicates broadening credit deterioration beyond junk bonds; confirms systemic concern."
+noteVIX  = "Equity volatility (‘fear gauge’). Rising >25 suggests risk-off; >30 often coincides with market stress or drawdowns."
+noteVXN  = "Nasdaq 100 volatility. Sensitive to growth/tech. If persistently above VIX, risk appetite in growth stocks is fading."
+noteMOVE = "Treasury market volatility. >110 = credit/liquidity tension; >130 = severe stress. Bond vol spikes often lead equity volatility."
+noteCPC  = "Options sentiment (puts vs calls). >1.0 = panic hedging (contrarian bullish); <0.7 = complacency (contrarian bearish). Use with trend context."
+noteSKEW = "Tail-risk pricing. >150 implies strong demand for crash protection; can precede or accompany risk-off episodes."
+noteYC   = "US yield curve (10y–3m, bps). Inversion (<0) precedes recessions; rapid re-steepening from deep inversion can mark late-cycle stress."
+noteBR   = "Breadth: % of S&P 500 above 200DMA. <45% = weakening internals; <30% typical of bear markets. Falling breadth = fragility."
+noteCONC = "Leadership concentration (SPY/RSP). Rising ratio = narrow rally led by megacaps; narrow leadership increases drawdown risk."
+noteNFCI = "Chicago Fed financial conditions index. >0 = tight; >0.5 = stressed. Sustained rises weigh on credit availability and growth."
+noteSLOOS= "Net % of banks tightening C&I standards. >20 = tightening; >30 = high risk to growth. Leads downturns by several quarters."
+noteEU_VOL  = "EU volatility (VSTOXX future). Rising levels reflect EU-specific stress (politics, ECB policy, growth)."
+noteEU_CR   = "EU credit stress proxy (IHYG/IEAC). Higher ratio = HY underperforming IG (wider risk premium)."
+noteEU_CURV = "German 10y–2y (bps). <0 = inversion/recession risk. Rapid steepening from inversion can coincide with stress."
+noteEU_CONC = "EU leadership concentration (cap/broad). Rising = only large caps holding up; narrow leadership = fragility risk."
+
+// ===== Positions =====
+posStatus = anchorStatus=="top_left" ? position.top_left : anchorStatus=="top_right" ? position.top_right : anchorStatus=="bottom_left" ? position.bottom_left : position.bottom_right
+posMain   = anchorMain  =="top_left" ? position.top_left : anchorMain  =="top_right" ? position.top_right : anchorMain  =="bottom_left" ? position.bottom_left : position.bottom_right
+
+// ===== STATUS BOX =====
+var table t_status = na
+if na(t_status)
+    t_status := table.new(posStatus, 3, 6, bgcolor=color.new(color.rgb(0,0,0), 0), frame_color=color.new(color.rgb(0,255,0), 20), frame_width=2)
+
+if barstate.islast and not na(t_status)
+    for c = 0 to 2
+        for r = 0 to 5
+            table.cell(t_status, c, r, "")
+    headBg = color.new(color.rgb(15,15,15), 0)
+    paneBg = color.new(color.rgb(10,10,10), 0)
+
+    table.cell(t_status, 0, 0, "MACRO RISK STATUS", text_color=color.white, bgcolor=headBg, text_size=txtSizeStatus)
+    table.cell(t_status, 1, 0, "", bgcolor=headBg)
+    table.cell(t_status, 2, 0, "", bgcolor=headBg)
+
+    table.cell(t_status, 0, 1, "Status", text_color=color.white, bgcolor=paneBg, text_size=txtSizeStatus)
+    table.cell(t_status, 1, 1, statusWord, text_color=color.black, bgcolor=statusColor, text_size=txtSizeStatus)
+    table.cell(t_status, 2, 1, "", bgcolor=statusColor)
+
+    table.cell(t_status, 0, 2, "Score", text_color=color.white, bgcolor=paneBg, text_size=txtSizeStatus)
+    table.cell(t_status, 1, 2, str.tostring(riskScore), text_color=color.white, bgcolor=paneBg, text_size=txtSizeStatus)
+    table.cell(t_status, 2, 2, "", bgcolor=paneBg)
+
+    table.cell(t_status, 0, 3, "Drivers", text_color=color.white, bgcolor=paneBg, text_size=txtSizeStatus)
+    table.cell(t_status, 1, 3, reason, text_color=color.white, bgcolor=paneBg, text_size=txtSizeStatus)
+    table.cell(t_status, 2, 3, "", bgcolor=paneBg)
+
+    table.cell(t_status, 0, 4, "Summary", text_color=color.white, bgcolor=paneBg, text_size=txtSizeStatus)
+    table.cell(t_status, 1, 4, statusSentence, text_color=color.white, bgcolor=paneBg, text_size=txtSizeStatus)
+    table.cell(t_status, 2, 4, "", bgcolor=paneBg)
+
+    table.cell(t_status, 0, 5, "", bgcolor=headBg)
+    table.cell(t_status, 1, 5, "", bgcolor=headBg)
+    table.cell(t_status, 2, 5, "", bgcolor=headBg)
+
+// ===== MAIN DASHBOARD (auto-height) =====
+var table t_main = na
+var int last_rows = na
+
+// Count rows needed
+baseUS = 11 + (useMOVE ? 1 : 0)
+euRows = (showEU_Vol and not na(eu_vol) ? 1 : 0) +
+         (showEU_CreditETF and not na(eu_credit_ratio) ? 1 : 0) +
+         (showEU_Curve and not na(eu_curve_bps) ? 1 : 0) +
+         (showEU_Conc and not na(eu_conc_ratio) ? 1 : 0)
+
+headerRows = 2
+rowsNeeded = headerRows + baseUS + euRows
+
+// (Re)create table if rows changed or not exists
+if na(t_main) or rowsNeeded != last_rows
+    t_main := table.new(posMain, 7, math.max(rowsNeeded, 2), bgcolor=color.new(color.rgb(0,0,0), 0), frame_color=color.new(color.rgb(0,255,0), 20), frame_width=1)
+    last_rows := rowsNeeded
+
+// Paint dashboard
+if barstate.islast and not na(t_main)
+    // Clear used area
+    for c = 0 to 6
+        for r = 0 to rowsNeeded - 1
+            table.cell(t_main, c, r, "")
+
+    headBg = color.new(color.rgb(15,15,15), 0)
+
+    // Header strip
+    table.cell(t_main, 0, 0, "Macro Risk Dashboard (US core + EU)", text_color=color.white, bgcolor=compColor, text_size=txtSizeMain)
+    table.cell(t_main, 1, 0, "RiskScore",                            text_color=color.white, bgcolor=compColor, text_size=txtSizeMain)
+    table.cell(t_main, 2, 0, str.tostring(riskScore),                text_color=color.white, bgcolor=compColor, text_size=txtSizeMain)
+    for c = 3 to 6
+        table.cell(t_main, c, 0, "", bgcolor=compColor)
+
+    // Column headers
+    table.cell(t_main, 0, 1, "Metric", text_color=color.white, bgcolor=headBg, text_size=txtSizeMain)
+    table.cell(t_main, 1, 1, "Value",  text_color=color.white, bgcolor=headBg, text_size=txtSizeMain)
+    table.cell(t_main, 2, 1, "Z",      text_color=color.white, bgcolor=headBg, text_size=txtSizeMain)
+    table.cell(t_main, 3, 1, "Trend",  text_color=color.white, bgcolor=headBg, text_size=txtSizeMain)
+    table.cell(t_main, 4, 1, "Risk",   text_color=color.white, bgcolor=headBg, text_size=txtSizeMain)
+    table.cell(t_main, 5, 1, "Symbol", text_color=color.white, bgcolor=headBg, text_size=txtSizeMain)
+    table.cell(t_main, 6, 1, showNoteColumn ? "Note" : "", text_color=color.white, bgcolor=headBg, text_size=txtSizeMain)
+
+    // Row writer
+    int r = 2
+    r := f_row(t_main, r, "US HY OAS (bps)", noteHY, hy_oas, z_hy,   dz_hy,   f_word_from_status(stHY),   colHY,   symHYOAS, txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US IG OAS (bps)", noteIG, ig_oas, z_ig,   dz_ig,   f_word_from_status(stIG),   colIG,   symIGOAS, txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US VIX",          noteVIX, vix,    z_vix,  dz_vix,  f_word_from_status(stVIX),  colVIX,  symVIX,   txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US VXN",          noteVXN, vxn,    z_vxn,  dz_vxn,  f_word_from_status(stVXN),  colVXN,  symVXN,   txtSizeMain, txtSizeNote, showNoteColumn)
+    if useMOVE
+        r := f_row(t_main, r, "US MOVE",     noteMOVE, moveI,  z_move, dz_move, f_word_from_status(stMOVE), colMOVE, symMOVE,  txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US Put/Call (Total)",  noteCPC, cpc,  z_cpc,  dz_cpc,  f_word_from_status(stCPC),  colCPC,  symCPC,  txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US SKEW",         noteSKEW, skew,   z_skew, dz_skew, f_word_from_status(stSKEW), colSKEW, symSKEW, txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US Yield curve 10y-3m (bps)", noteYC, yc_bps, z_yc, dz_yc, f_word_from_status(stYC), colYC, symT10Y3M, txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US %>200DMA (S&P)", noteBR, breadth, z_breadth, dz_brd, f_word_from_status(stBR), colBR, symS5TH, txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US Concentration (SPY/RSP)", noteCONC, concRatio, z_conc, dz_conc, f_word_from_status(stCONC), colCONC, str.format("{0}/{1}", symSPY, symRSP), txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US NFCI",         noteNFCI, nfci,   z_nfci, dz_nfci, f_word_from_status(stNFCI), colNFCI, symNFCI, txtSizeMain, txtSizeNote, showNoteColumn)
+    r := f_row(t_main, r, "US SLOOS (pp)",   noteSLOOS, sloos,  z_sloos, dz_sloo, f_word_from_status(stSLOOS), colSLOOS, symSLOOS, txtSizeMain, txtSizeNote, showNoteColumn)
+
+    // EU (only if toggled & data present)
+    if showEU_Vol and not na(eu_vol)
+        r := f_row(t_main, r, "EU Volatility (VSTOXX future)", noteEU_VOL, eu_vol, z_eu_vol, dz_eu_vol, f_word_from_status(stEU_VOL), colEU_VOL, symEU_Vol, txtSizeMain, txtSizeNote, showNoteColumn)
+    if showEU_CreditETF and not na(eu_credit_ratio)
+        r := f_row(t_main, r, "EU Credit Proxy (IHYG/IEAC)", noteEU_CR, eu_credit_ratio, z_eu_cr, dz_eu_cr, f_word_from_status(stEU_CR), colEU_CR, str.format("{0}/{1}", symEU_HY_ETF, symEU_IG_ETF), txtSizeMain, txtSizeNote, showNoteColumn)
+    if showEU_Curve and not na(eu_curve_bps)
+        r := f_row(t_main, r, "EU Yield curve (DE10Y-DE02Y, bps)", noteEU_CURV, eu_curve_bps, z_eu_curve, dz_eu_curve, f_word_from_status(stEU_CURV), colEU_CURV, str.format("{0}-{1}", symEU_10Y, symEU_SE), txtSizeMain, txtSizeNote, showNoteColumn)
+    if showEU_Conc and not na(eu_conc_ratio)
+        r := f_row(t_main, r, "EU Concentration (cap/broad)", noteEU_CONC, eu_conc_ratio, z_eu_conc, dz_eu_conc, f_word_from_status(stEU_CONC), colEU_CONC, str.format("{0}/{1}", symEU_CapETF, symEU_BroadETF), txtSizeMain, txtSizeNote, showNoteColumn)
+
+// ===== Alerts (examples) =====
+isRedCredit  = (stHY==2) or (stIG==2)
+isRedVol     = useMOVE ? ((stVIX==2) or (stVXN==2) or (stMOVE==2)) : ((stVIX==2) or (stVXN==2))
+isRedCurve   = (stYC==2)
+isRedBreadth = (stBR==2)
+isRedSent    = (stCPC==2) or (stSKEW==2)
+isRedTight   = (stNFCI==2) or (stSLOOS==2)
+
+alertcondition(isRedCredit,  title="US RED: Credit spreads",            message="MacroRisk: US credit spreads in RED")
+alertcondition(isRedVol,     title="US RED: Volatility (incl. MOVE)",   message="MacroRisk: US equity/bond vol in RED")
+alertcondition(isRedCurve,   title="US RED: Yield curve",               message="MacroRisk: US 10y-3m deeply inverted")
+alertcondition(isRedBreadth, title="US RED: Breadth",                   message="MacroRisk: US %>200DMA very weak")
+alertcondition(isRedSent,    title="US RED: Options sentiment",         message="MacroRisk: US Put/Call (CPC) or SKEW extreme")
+alertcondition(isRedTight,   title="US RED: Conditions/Lending",        message="MacroRisk: US NFCI/SLOOS tight")
