@@ -5,6 +5,8 @@ It aggregates high-frequency and macroeconomic indicators into a structured, vis
 
 The dashboard brings together signals from **credit, volatility, yield curves, sentiment, and market breadth** — combining technical and fundamental dimensions into a unified, data-driven “macro pulse” of market health.
 
+<img width="2382" height="1681" alt="image" src="https://github.com/user-attachments/assets/5a7af836-54cd-4f47-bc9e-3aff0e68f45f" />
+
 ---
 
 ## 🧠 Theoretical Background
@@ -93,7 +95,7 @@ Each row includes:
 - Color-coded risk state  
 - Source symbol  
 - Educational note *(optional)*  
-- Tooltip *(always available on hover)*  
+- Tooltip *(always available on hover over the metric)*  
 
 ---
 
