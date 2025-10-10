@@ -3,7 +3,7 @@
 **MacroPulseDashboard** is a **macro-financial risk monitoring tool** built for TradingView in Pine Script (v6).  
 It aggregates high-frequency and macroeconomic indicators into a structured, visual dashboard that helps identify **periods of rising systemic stress, tightening liquidity, and cyclical market inflection points**.
 
-The dashboard brings together signals from **credit, volatility, yield curves, sentiment, and market breadth** — combining technical and fundamental dimensions into a unified, data-driven “macro pulse” of market health.
+The dashboard brings together signals from **credit, volatility, yield curves, sentiment, and market breadth**, combining technical and fundamental dimensions into a unified, data-driven “macro pulse” of market health.
 
 <img width="2382" height="1681" alt="image" src="https://github.com/user-attachments/assets/5a7af836-54cd-4f47-bc9e-3aff0e68f45f" />
 
@@ -12,7 +12,7 @@ The dashboard brings together signals from **credit, volatility, yield curves, s
 ## 🧠 Theoretical Background
 
 Financial markets are forward-looking, but macro and credit conditions often deteriorate beneath the surface long before price corrections appear.  
-**MacroPulseDashboard** is designed to capture those *precursor signals* — combining insights from **economic theory, credit risk modeling, and technical market structure**.
+**MacroPulseDashboard** is designed to capture those *precursor signals*, combining insights from **economic theory, credit risk modeling, and technical market structure**.
 
 ### Key Principles
 
@@ -22,7 +22,7 @@ Financial markets are forward-looking, but macro and credit conditions often det
 
 2. **Volatility transmits stress.**  
    - Rising volatility (VIX, MOVE, VSTOXX) represents repricing of risk across asset classes.  
-   - When bond and equity vol move together, systemic correlations increase — often a hallmark of liquidity shocks.
+   - When bond and equity vol move together, systemic correlations increase, often a hallmark of liquidity shocks.
 
 3. **Yield curve as a monetary signal.**  
    - Inversion (short rates above long rates) reflects restrictive policy and slowing growth expectations.  
@@ -37,7 +37,7 @@ Financial markets are forward-looking, but macro and credit conditions often det
    - Liquidity contractions precede slowdowns, while easing conditions mark recovery phases.
 
 6. **Intermarket correlation = risk convergence.**  
-   - Cross-asset metrics (credit, vol, equities, rates) often synchronize before major corrections — a sign of declining diversification benefit.
+   - Cross-asset metrics (credit, vol, equities, rates) often synchronize before major corrections, which can be a sign of declining diversification benefit.
 
 ---
 
@@ -47,10 +47,10 @@ MacroPulseDashboard aims to:
 - **Quantify** macro stress using observable, high-quality data.
 - **Visualize** market fragility and liquidity tightening in real time.
 - **Bridge** the gap between economic fundamentals and technical market behavior.
-- **Educate** traders on macro relationships — with built-in tooltips explaining each metric.
+- **Educate** traders on macro relationships, with built-in tooltips explaining each metric.
 
 It’s not a trading signal generator; it’s a **situational awareness tool**.  
-Think of it as your *market seismograph* — tracking tremors before the quake.
+Think of it as your *market seismograph*, tracking tremors before the quake.
 
 ---
 
@@ -63,7 +63,7 @@ Think of it as your *market seismograph* — tracking tremors before the quake.
 | **Volatility** | VIX, VXN, MOVE | Cross-asset uncertainty and market repricing speed |
 | **Yield Curve** | 10y–3m | Policy tightness and forward recession probability |
 | **Breadth** | % Above 200DMA | Market participation and internal strength |
-| **Concentration** | SPY/RSP Ratio | Leadership narrowness — fragility indicator |
+| **Concentration** | SPY/RSP Ratio | Leadership narrowness, fragility indicator |
 | **Liquidity** | NFCI, SLOOS | Credit conditions and lending environment |
 | **Sentiment** | Put/Call Ratio, SKEW | Hedging behavior and tail-risk demand |
 
@@ -169,5 +169,5 @@ Use in conjunction with professional judgment and other risk management tools.
 
 ## 🧠 Author Notes
 MacroPulseDashboard was created to help traders and analysts **quantify and visualize macro-financial stress** using open data.  
-It blends **economic fundamentals** (credit, curve, liquidity) with **technical context** (breadth, volatility, sentiment) — turning complex market dynamics into intuitive, data-driven insight.
+It blends **economic fundamentals** (credit, curve, liquidity) with **technical context** (breadth, volatility, sentiment) and turns these complex market dynamics into intuitive, data-driven insight.
 
