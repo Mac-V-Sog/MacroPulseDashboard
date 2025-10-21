@@ -1,173 +1,176 @@
 # 📊 MacroPulseDashboard
 
-**MacroPulseDashboard** is a **macro-financial risk monitoring tool** built for TradingView in Pine Script (v6).  
-It aggregates high-frequency and macroeconomic indicators into a structured, visual dashboard that helps identify **periods of rising systemic stress, tightening liquidity, and cyclical market inflection points**.
+**MacroPulseDashboard** is a **macro-financial risk monitoring tool** for TradingView (Pine Script v6).
+It aggregates key indicators into a structured dashboard to surface **systemic stress, liquidity tightness, and late-cycle risk**.
 
-The dashboard brings together signals from **credit, volatility, yield curves, sentiment, and market breadth**, combining technical and fundamental dimensions into a unified, data-driven “macro pulse” of market health.
+The dashboard blends **credit, volatility, yield curve, sentiment, and breadth** into a unified, data-driven “macro pulse” of market health.
 
-<img width="2382" height="1681" alt="image" src="https://github.com/user-attachments/assets/5a7af836-54cd-4f47-bc9e-3aff0e68f45f" />
+<img width="1095" height="539" alt="image" src="https://github.com/user-attachments/assets/79e292c2-903b-4c3c-9883-4958bbc6d4a1" />
 
 ---
 
 ## 🧠 Theoretical Background
 
-Financial markets are forward-looking, but macro and credit conditions often deteriorate beneath the surface long before price corrections appear.  
-**MacroPulseDashboard** is designed to capture those *precursor signals*, combining insights from **economic theory, credit risk modeling, and technical market structure**.
+Financial conditions often deteriorate beneath the surface before prices crack. This tool tracks those **precursor signals** from credit, curves, vol, and market internals to frame risk regimes and inflection risk.
 
-### Key Principles
+**Principles**
 
-1. **Credit leads equities.**  
-   - Widening credit spreads (especially in high-yield markets) often precede equity drawdowns by weeks or months.  
-   - This reflects tightening financial conditions, lower risk appetite, and rising default probabilities.
-
-2. **Volatility transmits stress.**  
-   - Rising volatility (VIX, MOVE, VSTOXX) represents repricing of risk across asset classes.  
-   - When bond and equity vol move together, systemic correlations increase, often a hallmark of liquidity shocks.
-
-3. **Yield curve as a monetary signal.**  
-   - Inversion (short rates above long rates) reflects restrictive policy and slowing growth expectations.  
-   - A subsequent *steepening* from deep inversion often marks the transition to recession.
-
-4. **Breadth and concentration matter.**  
-   - When only a few stocks sustain market performance (narrow leadership), the structural fragility of the market rises.  
-   - Broad participation is typically a sign of robust, healthy risk-taking.
-
-5. **Liquidity drives cycles.**  
-   - Indicators like NFCI and SLOOS quantify the ease or tightness of credit.  
-   - Liquidity contractions precede slowdowns, while easing conditions mark recovery phases.
-
-6. **Intermarket correlation = risk convergence.**  
-   - Cross-asset metrics (credit, vol, equities, rates) often synchronize before major corrections, which can be a sign of declining diversification benefit.
+1. **Credit leads equities** — widening HY/IG OAS precedes equity drawdowns.
+2. **Volatility transmits stress** — synchronized equity/bond vol spikes signal liquidity shocks.
+3. **Yield curve = policy impulse** — deep inversion → restrictive policy; re-steepening often precedes recession.
+4. **Breadth & concentration** — narrow leadership = fragile risk taking.
+5. **Liquidity drives cycles** — NFCI/SLOOS tighten before activity slows.
+6. **Cross-asset convergence** — rising correlations reduce diversification right when you want it most.
 
 ---
 
 ## 🎯 Purpose and Use
 
-MacroPulseDashboard aims to:
-- **Quantify** macro stress using observable, high-quality data.
-- **Visualize** market fragility and liquidity tightening in real time.
-- **Bridge** the gap between economic fundamentals and technical market behavior.
-- **Educate** traders on macro relationships, with built-in tooltips explaining each metric.
+* **Quantify** macro stress with normalized metrics.
+* **Visualize** risk drivers at a glance.
+* **Educate** via built-in **tooltips** explaining each metric and column.
 
-It’s not a trading signal generator; it’s a **situational awareness tool**.  
-Think of it as a *market seismograph*, tracking tremors before the quake... (weird analogy, I know!)
+It’s not a trade signal generator; it’s **situational awareness**—a market seismograph for tremors before the quake.
 
 ---
 
 ## ⚙️ Key Metrics
 
-### 🇺🇸 United States Core Set
-| Category | Metric | What It Reflects |
-|-----------|---------|------------------|
-| **Credit Risk** | HY & IG OAS | Funding stress and corporate credit spread widening |
-| **Volatility** | VIX, VXN, MOVE | Cross-asset uncertainty and market repricing speed |
-| **Yield Curve** | 10y–3m | Policy tightness and forward recession probability |
-| **Breadth** | % Above 200DMA | Market participation and internal strength |
-| **Concentration** | SPY/RSP Ratio | Leadership narrowness, fragility indicator |
-| **Liquidity** | NFCI, SLOOS | Credit conditions and lending environment |
-| **Sentiment** | Put/Call Ratio, SKEW | Hedging behavior and tail-risk demand |
+### 🇺🇸 United States (Core)
 
-### 🇪🇺 European Extension
-| Category | Metric | What It Reflects |
-|-----------|---------|------------------|
-| **Volatility** | VSTOXX (FVS1!) | Eurozone market volatility |
-| **Credit Stress Proxy** | IHYG / IEAC | Spread proxy for Euro corporate risk |
-| **Yield Curve** | DE10Y–DE02Y | ECB policy slope and Eurozone growth expectations |
-| **Leadership** | VGK / EZU | Concentration in EU equities |
+| Category                 | Metric                      |
+| ------------------------ | --------------------------- |
+| **Credit**               | HY OAS, IG OAS              |
+| **Volatility**           | VIX, VXN, (MOVE if enabled) |
+| **Yield Curve**          | 10y–3m (bps)                |
+| **Breadth**              | % S&P above 200DMA          |
+| **Concentration**        | SPY / RSP                   |
+| **Liquidity/Conditions** | NFCI, SLOOS                 |
+| **Options Sentiment**    | Put/Call (CPC), SKEW        |
+
+### 🇪🇺 European (Optional)
+
+| Category         | Metric                |
+| ---------------- | --------------------- |
+| **Volatility**   | VSTOXX future (FVS1!) |
+| **Credit Proxy** | IHYG / IEAC           |
+| **Yield Curve**  | DE10Y – DE02Y (bps)   |
+
+> Note: The previously listed EU leadership pair is **not** in this version and has been removed.
 
 ---
 
 ## 📈 Dashboard Structure
 
-### 🧭 Status Box
-Summarizes the current macro regime:
-- Overall **status** (Low / Monitor / Caution / High Risk)
-- **Composite risk score (0–100)**
-- **Drivers** — which sectors are contributing most to risk
-- A short **summary** explaining current market tone
+### 🧭 Top Header (Merged)
 
-### 💡 Main Dashboard
-Each row includes:
-- Metric name  
-- Live value  
-- Z-score (vs historical range)  
-- Trend (▲ rising / ▼ falling / → stable)  
-- Color-coded risk state  
-- Source symbol  
-- Educational note *(optional)*  
-- Tooltip *(always available on hover over the metric)*  
+* **Composite Risk** (0–100%) with color-coded background
+* Plain-language **Status**: “No immediate concern”, “Caution”, “High risk”, “Severe”
+* **US reds / ambers** counts
+* **EU included/excluded** indicator
+* **Tooltip** explaining how the composite is computed and when the denominator changes
 
----
+### 💡 Main Table (6 columns)
 
-## 🧮 Scoring and Model Logic
+* **Metric** — instrument/series (tooltip shows the detailed note & last-update age)
+* **Value** — latest reading (cell background reflects risk bucket)
+* **Z** — z-score vs history (lookback = input `lenDaily`)
+* **Trend** — **dZ** over `trendLook` bars with arrow (↑ if > +0.15, ↓ if < −0.15, – otherwise)
+* **Risk** — plain text bucket label
+* **Symbol** — data source symbol(s)
 
-1. Each metric is normalized into a **z-score** (standard deviations from its historical mean).  
-2. Metrics are classified by directionality (e.g., high VIX = bad; high %>200DMA = good).  
-3. Each is assigned a status:  
-   - 🟢 Stable / No concern  
-   - 🟡 Monitor  
-   - 🟠 Caution  
-   - 🔴 High risk  
-4. Group-level scores are calculated (Credit, Vol, Curve, etc.) and averaged.  
-5. A **Composite Risk Score** (0–100) aggregates across groups, producing a unified signal.  
+> There is **no Notes column** anymore. Notes are shown via **tooltips** on hover.
 
 ---
 
-## 🧩 Using MacroPulseDashboard
+## 🧮 Scoring & Logic
 
-1. Add the script to your chart via the Pine Editor.  
-2. Set timeframe to **1D** (macro data generally updates daily or weekly).  
-3. Choose your anchor points (top-left, bottom-right, etc.).  
-4. Optionally enable:
-   - **EU metrics** for transatlantic stress comparison  
-   - **Note column** for quick learning  
-   - **Compact mode** for tighter view  
+* **Z-scores**: `z = (x − mean) / stdev` over `lenDaily` bars.
+* **Status buckets**:
+
+  * **Regime-aware** (default): rolling percentiles over `pctLen` bars
+  * **Fixed thresholds** (optional): static amb/red cutoffs per metric
+* **Group scores** (Credit, Vol, Curve, Breadth, Sentiment, Conditions; optional **Funding**, optional **Banks**)
+
+  * Each group = max of its constituents (0, 1, or 2)
+* **Composite**: `(sum of group scores / denominator) × 100%`
+
+  * **Denominator auto-adjusts** if Funding/Banks/EU are toggled on/off
+* **EU metrics** include proper **dZ** (no longer NA)
+
+**Note on sparse series (FRED/curves):** If no new data printed within `trendLook` bars, dZ may be 0.00 (unchanged). This is expected for low-frequency series.
+
+---
+
+## 🧰 Using MacroPulseDashboard
+
+1. Add the script in **Pine Editor** and **apply to chart**.
+2. Recommended timeframe: **1D** (many series update daily/weekly).
+3. Inputs:
+
+   * **Regime-aware thresholds** (on by default)
+   * **Z-score & Trend lookbacks** (`lenDaily`, `trendLook`)
+   * **Optional pillars**: Funding (TED, DXY), Banks (KRE/SPY, BKX/SPY)
+   * **EU metrics**: Vol, Credit, Curve
+   * **UI — Table**:
+
+     * **Table text size** (tiny/small/normal/large)
+     * **Table corner** (Top/Bottom × Left/Right)
 
 ---
 
 ## 🔔 Alerts
-The script includes built-in alert conditions that trigger when:
-- Credit or volatility enter red zone  
-- Yield curve or breadth deteriorate sharply  
-- Financial conditions or lending tighten significantly  
+
+**State (entering red):**
+
+* Credit, Volatility, Yield Curve, Breadth, Options Sentiment, Conditions
+* (Optional) Funding, (Optional) Banks
+
+**Rate-of-Change (fast moves):**
+
+* Credit widening, Volatility spike, Breadth drop, Funding tightens, Banks weakening
+
+Configure from **Add Alert → Condition → this script → choose alert name**.
 
 ---
 
-## 📊 Interpretation Example
+## 📊 Interpretation Examples
 
-| Scenario | Typical Dashboard Pattern |
-|-----------|----------------------------|
-| **Early-cycle expansion** | Low spreads, steep yield curve, strong breadth |
-| **Mid-cycle complacency** | Narrow leadership, low vol, flat curve |
-| **Late-cycle tension** | Curve inversion, rising vol, tightening NFCI |
-| **Crisis phase** | HY & IG stress, synchronized red signals across credit/vol/liquidity |
+| Scenario              | Typical Pattern                                             |
+| --------------------- | ----------------------------------------------------------- |
+| Early-cycle expansion | Low spreads, steep curve, strong breadth                    |
+| Mid-cycle complacency | Narrow leadership, low vol, flat curve                      |
+| Late-cycle tension    | Curve inversion, rising vol, tightening NFCI/SLOOS          |
+| Crisis phase          | HY/IG stress + synchronized red across credit/vol/liquidity |
 
 ---
 
-## 🧰 Technical Notes
+## 🧩 Technical Notes
 
-- Built in **Pine Script v6**
-- Optimized for **daily timeframes**
-- Uses `request.security()` for cross-symbol pulls  
-- Tooltip text supplied via `table.cell(..., tooltip=note)`  
-- Adjustable font sizes, layout anchors, and compact mode  
+* Pine Script **v6**
+* Cross-symbol pulls via `request.security()` (no lookahead, no gaps)
+* Tooltips on:
+
+  * **Top header** (composite explanation)
+  * **Column headers**: **Value**, **Z**, **Trend**
+  * **Every metric row** (note with last-update age & input TF)
+* Z lookback default: **156 bars**; Trend lookback default: **10 bars**
+* Optional EU metrics are **off** by default
 
 ---
 
 ## 📜 License
-MIT License — free to use, modify, and redistribute.  
-Please reference **MacroPulseDashboard** when sharing or adapting the work.
+
+MIT — use, modify, and redistribute freely. Please reference **MacroPulseDashboard** if you adapt it.
 
 ---
 
 ## ⚠️ Disclaimer
-MacroPulseDashboard is for **educational and analytical use only**.  
-It does **not constitute financial advice** or guarantee predictive accuracy.  
-Use in conjunction with professional judgment and other risk management tools.
+
+For **educational/analytical use** only. Not financial advice. Use alongside professional judgment and robust risk management.
 
 ---
 
 ## 🧠 Author Notes
-MacroPulseDashboard was created to help traders and analysts **quantify and visualize macro-financial stress** using open data.  
-It blends **economic fundamentals** (credit, curve, liquidity) with **technical context** (breadth, volatility, sentiment) and turns these complex market dynamics into intuitive, data-driven insight.
 
+Built to help traders/analysts **quantify and visualize macro stress** using open, high-quality data—bridging macro fundamentals and market microstructure into a crisp, explainable read of risk regimes.
